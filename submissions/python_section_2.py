@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import math
+from datetime import datetime
 
 def calculate_distance_matrix(df)->pd.DataFrame():
     """
@@ -158,4 +159,57 @@ def calculate_time_based_toll_rates(df)->pd.DataFrame():
     """
     # Write your logic here
 
-    return df
+    
+    # Defining timestamps:
+    time_00_00_00 = datetime.strptime('00:00:00', '%H:%M:%S').time()
+    time_10_00_00 = datetime.strptime('10:00:00', '%H:%M:%S').time()
+    time_18_00_00 = datetime.strptime('18:00:00', '%H:%M:%S').time()
+
+    # Creating time interval dataframe to be added for each row of input df:
+    time_range_data = [['Monday','00:00:00','Friday', '10:00:00'],
+                       ['Monday','10:00:00','Friday', '18:00:00'],
+                       ['Monday','18:00:00','Friday', '23:59:59'],
+                       ['Saturday','00:00:00','Sunday', '23:59:59'],]
+    
+    time_range_df = pd.DataFrame(data=time_range_data, columns=['startDay', 'startTime', 'endDay', 'endTime'])
+
+    # Updating data type of startTime and endTime from string to time:
+    time_range_df['startTime'] = pd.to_datetime(time_range_df['startTime'], format='%H:%M:%S').dt.time
+    time_range_df['endTime'] = pd.to_datetime(time_range_df['endTime'], format='%H:%M:%S').dt.time
+
+    # Adding this time range df to input df for each row:
+    time_df = pd.DataFrame(columns=['id_start', 'id_end', 'startDay', 'startTime', 'endDay', 'endTime'])
+    for i, row in df.iterrows():
+        temp_df1 = pd.DataFrame(data=[row[['id_start','id_end']].values]*4, columns=['id_start','id_end'])
+        temp_df1['id_start'] = temp_df1['id_start'].astype(int)
+        temp_df1['id_end'] = temp_df1['id_end'].astype(int)
+
+        row_df = pd.concat([temp_df1, time_range_df], axis=1)
+        time_df = pd.concat([time_df, row_df])
+
+    
+    result_df = df.merge(time_df, on=['id_start', 'id_end'])
+    result_df = result_df[['id_start', 'id_end', 'distance','startDay', 'startTime', 'endDay', 'endTime', 'moto', 'car', 'rv', 'bus', 'truck']]
+
+
+
+    # Updating the toll values based on the day and time interval:
+    for i in range(len(result_df)):
+        if result_df.loc[i,'startDay'] == 'Monday':
+            st_time = result_df.loc[i,'startTime']
+
+            if (st_time == time_00_00_00) or (st_time == time_18_00_00):
+                values = result_df.iloc[i,7:] * 0.8
+                result_df.iloc[i,7:] = [round(val,2) for val in values]
+                
+            elif st_time == time_10_00_00:
+                values = result_df.iloc[i,7:] * 1.2
+                result_df.iloc[i,7:] = [round(val,2) for val in values]
+
+        elif result_df.loc[i,'startDay'] == 'Saturday':
+            values = result_df.iloc[i,7:] * 0.7
+            result_df.iloc[i,7:] = [round(val,2) for val in values]
+    
+
+    return result_df
+
